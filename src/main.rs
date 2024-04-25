@@ -14,7 +14,7 @@ mod instruction;
 
 const NUM_SHARDS: usize = 32;
 
-type Db = Arc<DashMap<String, Bytes>>;
+type Db = Arc<DashMap<String, (u128, Bytes)>>;
 
 #[derive(Parser, Debug)]
 #[command(author="Ankush", version="0.1.0", about = None, long_about = None)]

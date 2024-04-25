@@ -7,7 +7,7 @@ use crate::error::ParseError;
 pub enum Instruction {
     Set {
         key: String,
-        expiry: u64,
+        expiry: u128,
         data_size: usize,
         data: Bytes,
     },
@@ -49,7 +49,7 @@ pub fn parse_string(line: String) -> Result<Instruction> {
             let expiry = parts
                 .next()
                 .context(anyhow!(ParseError::InvalidInstruction))?
-                .parse::<u64>()
+                .parse::<u128>()
                 .context(anyhow!(ParseError::InvalidInstruction))?;
             let data_size = parts
                 .next()
