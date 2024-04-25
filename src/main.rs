@@ -81,15 +81,15 @@ async fn start_server(port: u16) -> Result<()> {
                             },
                         };
                     }
-                    Err(e) => match connection.write_line(e.to_string()).await {
-                        Ok(_) => {
-                            continue;
+                    Err(e) => match e.downcast_ref() {
+                        Some(NetError::ConnClosedByClient) => {
+                            break;
                         }
-                        Err(_) => match e.downcast_ref() {
-                            Some(NetError::ConnClosedByClient) => {
-                                break;
+                        _ => match connection.write_line(e.to_string()).await {
+                            Ok(_) => {
+                                continue;
                             }
-                            _ => error!("Failed to write"),
+                            Err(_) => error!("Failed to write"),
                         },
                     },
                 };
