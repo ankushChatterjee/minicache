@@ -35,11 +35,11 @@ pub fn execute(ins: Instruction, cache: Db) -> Result<String> {
                     // Removing the key directly here can cause a deadlock
                     key_to_delete = Some(key);
                 }
-                let result = format!(
-                    "VALUE {} {}",
-                    String::from_utf8(data.to_vec()).context("Not valid UTF-8")?,
-                    data.len()
-                );
+
+                let result = match String::from_utf8(data.to_vec()) {
+                    Ok(value) => format!("VALUE {} {}", value, data.len()),
+                    Err(_) => format!("VALUE [object] {}", data.len()),
+                };
                 Ok(result)
             }
             None => anyhow::bail!("END"),

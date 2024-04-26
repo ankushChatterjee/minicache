@@ -97,15 +97,12 @@ impl Connection {
         Ok(())
     }
 
-    async fn parse_data(&mut self, data_size: usize) -> Result<Bytes> {
+    async fn parse_data<'a>(&mut self, data_size: usize) -> Result<Bytes> {
         let mut buf_cursor = Cursor::new(&self.buffer[..]);
         let line = get_line(&mut buf_cursor)?; // gets a line till the delimiter \r\n
-        let line = String::from_utf8(line.to_vec());
+        let v = line.to_vec(); // TODO: figure out how to not copy
         self.buffer.advance(buf_cursor.position() as usize); // advance the buffer to clear current instruciton
-        if line.is_err() {
-            anyhow::bail!(ParseError::InvalidData)
-        }
-        let data = Bytes::from(line.unwrap());
+        let data = Bytes::from(v);
 
         if data.len() != data_size {
             anyhow::bail!(ParseError::InvalidData)
