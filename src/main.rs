@@ -7,6 +7,8 @@ use dashmap::DashMap;
 use error::NetError;
 use log::{error, info};
 
+use crate::connection::Connection;
+
 mod connection;
 mod error;
 mod executor;
@@ -59,7 +61,7 @@ async fn start_server(port: u16) -> Result<()> {
         let cloned_cache = cache.clone();
         info!("Accepted new connection");
         tokio::spawn(async move {
-            let mut connection = connection::new(stream);
+            let mut connection = Connection::new(stream);
             loop {
                 let ins = connection.read_instruction().await;
                 match ins {

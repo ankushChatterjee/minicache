@@ -12,21 +12,22 @@ use crate::{
     instruction::{self, Instruction},
 };
 
+#[derive(Debug)]
 pub struct Connection {
     stream: BufWriter<TcpStream>,
     buffer: BytesMut,
     waiting_instruction: Option<(Instruction, usize)>,
 }
 
-pub fn new(socket: TcpStream) -> Connection {
-    Connection {
-        stream: BufWriter::new(socket),
-        buffer: BytesMut::new(),
-        waiting_instruction: None,
-    }
-}
-
 impl Connection {
+    pub fn new(socket: TcpStream) -> Connection {
+        Connection {
+            stream: BufWriter::new(socket),
+            buffer: BytesMut::new(),
+            waiting_instruction: None,
+        }
+    }
+
     pub async fn read_instruction(&mut self) -> Result<Instruction> {
         loop {
             match self.waiting_instruction.clone() {
