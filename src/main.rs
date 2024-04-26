@@ -6,15 +6,18 @@ use clap::{command, Parser};
 use dashmap::DashMap;
 use error::NetError;
 use log::{error, info};
+use tokio::time::{sleep, Duration};
 
 use crate::connection::Connection;
 
+mod cleaner;
 mod connection;
 mod error;
 mod executor;
 mod instruction;
 
 const NUM_SHARDS: usize = 32;
+const CLEANUP_GAP: u64 = 60;
 
 type Db = Arc<DashMap<String, (u128, Bytes)>>;
 
@@ -29,9 +32,11 @@ struct Args {
 async fn main() {
     print_ascii_art();
     env_logger::init();
+    let cache: Db = Arc::new(DashMap::with_shard_amount(NUM_SHARDS));
     let args = Args::parse();
+    start_cleanup_daemon(cache.clone()).await;
     // Start tokio TCP Server
-    match start_server(args.port.unwrap()).await {
+    match start_server(args.port.unwrap(), cache.clone()).await {
         Ok(_) => (),
         Err(e) => error!("{e}"),
     };
@@ -49,13 +54,12 @@ fn print_ascii_art() {
     print!("{}", art);
 }
 
-async fn start_server(port: u16) -> Result<()> {
+async fn start_server(port: u16, cache: Db) -> Result<()> {
     let addr = format!("127.0.0.1:{}", port);
     info!("Starting server on {addr}");
     let listener = tokio::net::TcpListener::bind(&addr)
         .await
         .context(format!("Can't bind {addr}"))?;
-    let cache: Db = Arc::new(DashMap::with_shard_amount(NUM_SHARDS));
     loop {
         let (stream, _) = listener.accept().await?;
         let cloned_cache = cache.clone();
@@ -99,4 +103,18 @@ async fn start_server(port: u16) -> Result<()> {
             info!("Dropped Connection");
         });
     }
+}
+
+async fn start_cleanup_daemon(cache: Db) {
+    let cache = cache.clone();
+    tokio::spawn(async move {
+        loop {
+            let cache = cache.clone();
+            sleep(Duration::from_secs(CLEANUP_GAP)).await;
+            let _ = cleaner::clean(cache).await.is_err_and(|e| {
+                error!("{e}");
+                true
+            });
+        }
+    });
 }
