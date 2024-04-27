@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Context, Ok, Result};
+use anyhow::{anyhow, Context, Result};
 use bytes::Bytes;
 
 use crate::error::ParseError;
@@ -34,6 +34,25 @@ pub fn complete_ins(ins: Instruction, data: Bytes) -> Instruction {
         _ => {
             return ins;
         }
+    };
+}
+
+pub fn parse_ins_with_data(line: String, data: Bytes) -> Result<Instruction> {
+    let parts = line.split_whitespace();
+    let mut parts = parts.into_iter();
+    match parts.next() {
+        Some("set") => match parse_string(line) {
+            Ok(ins) => {
+                return Ok(complete_ins(ins, data));
+            }
+            Err(err) => match err.downcast_ref() {
+                Some(ParseError::InsufficientWaiting(ins, _)) => {
+                    return Ok(complete_ins(ins.clone(), data));
+                }
+                _ => return Err(err),
+            },
+        },
+        _ => return Err(anyhow!(ParseError::InvalidInstruction)),
     };
 }
 

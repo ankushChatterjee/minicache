@@ -57,7 +57,7 @@ impl Connection {
                     if n == 0 {
                         anyhow::bail!(NetError::ConnClosedByClient)
                     }
-                    match self.parse_command().await {
+                    match self.parse_instruction().await {
                         Ok(ins) => return Ok(ins.clone()),
                         Err(e) => match e.downcast_ref() {
                             Some(ParseError::InsufficientWaiting(ins, data_size)) => {
@@ -111,17 +111,30 @@ impl Connection {
         Ok(data)
     }
 
-    async fn parse_command(&mut self) -> Result<Instruction> {
+    async fn parse_instruction(&mut self) -> Result<Instruction> {
         let mut buf_cursor = Cursor::new(&self.buffer[..]);
         let line = get_line(&mut buf_cursor)?; // gets a line till the delimiter \r\n
         let line = String::from_utf8(line.to_vec());
+        let mut data: Option<Bytes> = None;
+
+        if let Ok(new_line) = get_line(&mut buf_cursor) {
+            // Sometimes instructions like "set" are 2 lines
+            let v = new_line.to_vec(); // TODO: figure out how to not copy
+            data = Some(Bytes::from(v));
+        }
+
         self.buffer.advance(buf_cursor.position() as usize); // advance the buffer to clear current instruciton
-        if line.is_err() {
+
+        if let Ok(line) = line {
+            if let Some(data) = data {
+                return Ok(instruction::parse_ins_with_data(line, data)?);
+            } else {
+                let instruction = instruction::parse_string(line)?;
+                Ok(instruction)
+            }
+        } else {
             anyhow::bail!(ParseError::InvalidInstruction)
         }
-        let instruction = instruction::parse_string(line.unwrap())?;
-
-        Ok(instruction)
     }
 }
 

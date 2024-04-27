@@ -46,8 +46,8 @@ pub fn execute(ins: Instruction, cache: Db) -> Result<String> {
         },
     };
 
-    if key_to_delete.is_some() {
-        cache.remove(&key_to_delete.unwrap());
+    if let Some(key_to_delete) = key_to_delete {
+        cache.remove(&key_to_delete);
         anyhow::bail!("END");
     }
     res
