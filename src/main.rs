@@ -4,7 +4,7 @@ use anyhow::{Context, Result};
 use bytes::Bytes;
 use clap::{command, Parser};
 use dashmap::DashMap;
-use error::NetError;
+use error::{CleanupError, NetError};
 use log::{error, info};
 use tokio::time::{sleep, Duration};
 
@@ -17,7 +17,7 @@ mod executor;
 mod instruction;
 
 const NUM_SHARDS: usize = 32;
-const CLEANUP_GAP: u64 = 60;
+const CLEANUP_GAP: u64 = 10;
 
 type Db = Arc<DashMap<String, (u128, Bytes)>>;
 
@@ -113,10 +113,19 @@ async fn start_cleanup_daemon(cache: Db) {
         loop {
             let cache = cache.clone();
             sleep(Duration::from_secs(CLEANUP_GAP)).await;
-            let _ = cleaner::clean(cache).await.is_err_and(|e| {
-                error!("{e}");
-                true
-            });
+
+            match cleaner::clean(cache).await {
+                Ok(_) => sleep(Duration::from_secs(CLEANUP_GAP)).await,
+                Err(e) => match e.downcast_ref() {
+                    Some(CleanupError::NeedToRepeat) => {
+                        continue;
+                    }
+                    _ => {
+                        error!("{e}");
+                        sleep(Duration::from_secs(CLEANUP_GAP)).await;
+                    }
+                },
+            };
         }
     });
 }

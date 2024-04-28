@@ -33,3 +33,16 @@ impl Display for NetError {
         }
     }
 }
+
+#[derive(Debug, Clone)]
+pub enum CleanupError {
+    NeedToRepeat,
+}
+
+impl Display for CleanupError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            CleanupError::NeedToRepeat => write!(f, "NEED TO REPEAT"),
+        }
+    }
+}
