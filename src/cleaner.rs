@@ -17,12 +17,12 @@ pub async fn clean(cache: Db) -> Result<()> {
     let keys = cache.iter();
     let mut keys_to_remove: Vec<String> = Vec::new();
     for item in keys {
-        let (expiry, _) = item.value();
+        let db_item = item.value();
         let current_time = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .context("TIME ERROR")?
             .as_millis();
-        if current_time > *expiry && *expiry != 0 {
+        if current_time > db_item.expiry_timestamp && db_item.expiry_timestamp != 0 {
             keys_to_remove.push(item.key().to_string());
             if keys_to_remove.len() == num_clean {
                 break;

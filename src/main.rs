@@ -19,7 +19,13 @@ mod instruction;
 const NUM_SHARDS: usize = 32;
 const CLEANUP_GAP: u64 = 10;
 
-type Db = Arc<DashMap<String, (u128, Bytes)>>;
+struct DBItem {
+    expiry_timestamp: u128,
+    expiry_secs: u128,
+    value: Bytes,
+}
+
+type Db = Arc<DashMap<String, DBItem>>;
 
 #[derive(Parser, Debug)]
 #[command(author="Ankush", version="0.1.0", about = None, long_about = None)]
