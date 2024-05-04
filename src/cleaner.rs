@@ -2,21 +2,23 @@ use anyhow::{anyhow, Context, Result};
 use log::info;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::{error::CleanupError, Db};
+use crate::{error::CleanupError, Db, LockManager};
 
 const CLEAN_RATIO: f32 = 0.10;
 
-pub async fn clean(cache: Db) -> Result<()> {
+pub async fn clean(cache: Db, lock_manager: LockManager) -> Result<()> {
     /*
      * Look at 10% keys. If 25% of the keys are evictable repear the process.
      * Repeat the process until less than 25% keys sampled are evicted.
      * Note: An iteration on a hashmap picks random keys.
      */
+
     let num_clean = (cache.len() as f32 * CLEAN_RATIO) as usize;
     info!("Starting Cleaup for {} keys", num_clean);
     let keys = cache.iter();
     let mut keys_to_remove: Vec<String> = Vec::new();
     for item in keys {
+        lock_manager.get(item.key()).unwrap().read();
         let db_item = item.value();
         let current_time = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -31,7 +33,12 @@ pub async fn clean(cache: Db) -> Result<()> {
     }
 
     for key in &keys_to_remove {
+        lock_manager.get(key).unwrap().write();
         cache.remove(key);
+    }
+
+    for key in &keys_to_remove {
+        lock_manager.remove(key);
     }
     info!("Cleanup Complete. Cleaned {} keys", keys_to_remove.len());
 

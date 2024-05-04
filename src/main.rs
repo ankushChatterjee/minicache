@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 use anyhow::{Context, Result};
 use bytes::Bytes;
@@ -26,6 +26,7 @@ struct DBItem {
 }
 
 type Db = Arc<DashMap<String, DBItem>>;
+type LockManager = Arc<DashMap<String, RwLock<bool>>>;
 
 #[derive(Parser, Debug)]
 #[command(author="Ankush", version="0.1.0", about = None, long_about = None)]
@@ -39,10 +40,11 @@ async fn main() {
     print_ascii_art();
     env_logger::init();
     let cache: Db = Arc::new(DashMap::with_shard_amount(NUM_SHARDS));
+    let lock_manager: LockManager = Arc::new(DashMap::with_shard_amount(NUM_SHARDS));
     let args = Args::parse();
-    start_cleanup_daemon(cache.clone()).await;
+    start_cleanup_daemon(cache.clone(), lock_manager.clone()).await;
     // Start tokio TCP Server
-    match start_server(args.port.unwrap(), cache.clone()).await {
+    match start_server(args.port.unwrap(), cache.clone(), lock_manager.clone()).await {
         Ok(_) => (),
         Err(e) => error!("{e}"),
     };
@@ -62,7 +64,7 @@ fn print_ascii_art() {
     print!("{}", art);
 }
 
-async fn start_server(port: u16, cache: Db) -> Result<()> {
+async fn start_server(port: u16, cache: Db, lock_manager: LockManager) -> Result<()> {
     let addr = format!("127.0.0.1:{}", port);
     info!("Starting server on {addr}");
     let listener = tokio::net::TcpListener::bind(&addr)
@@ -71,6 +73,8 @@ async fn start_server(port: u16, cache: Db) -> Result<()> {
     loop {
         let (stream, _) = listener.accept().await?;
         let cloned_cache = cache.clone();
+        let cloned_lock_manager = lock_manager.clone();
+
         info!("Accepted new connection");
         tokio::spawn(async move {
             let mut connection = Connection::new(stream);
@@ -78,7 +82,11 @@ async fn start_server(port: u16, cache: Db) -> Result<()> {
                 let ins = connection.read_instruction().await;
                 match ins {
                     Ok(ins) => {
-                        match executor::execute(ins, cloned_cache.clone()) {
+                        match executor::execute(
+                            ins,
+                            cloned_cache.clone(),
+                            cloned_lock_manager.clone(),
+                        ) {
                             Ok(res) => {
                                 connection.write_line(res).await.unwrap();
                             }
@@ -113,14 +121,15 @@ async fn start_server(port: u16, cache: Db) -> Result<()> {
     }
 }
 
-async fn start_cleanup_daemon(cache: Db) {
+async fn start_cleanup_daemon(cache: Db, lock_manager: LockManager) {
     let cache = cache.clone();
     tokio::spawn(async move {
         loop {
             let cache = cache.clone();
+            let lock_manager = lock_manager.clone();
             sleep(Duration::from_secs(CLEANUP_GAP)).await;
 
-            match cleaner::clean(cache).await {
+            match cleaner::clean(cache, lock_manager).await {
                 Ok(_) => sleep(Duration::from_secs(CLEANUP_GAP)).await,
                 Err(e) => match e.downcast_ref() {
                     Some(CleanupError::NeedToRepeat) => {
