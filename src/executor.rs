@@ -41,11 +41,7 @@ pub fn execute(ins: Instruction, cache: Db, lock_manager: LockManager) -> Result
             Some(val) => {
                 let db_item = val.value();
                 lock_manager.get(&key).unwrap().read();
-                let current_time = SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .context("TIME ERROR")?
-                    .as_millis();
-                if current_time > db_item.expiry_timestamp && db_item.expiry_timestamp != 0 {
+                if is_expired(&db_item) {
                     // Removing the key directly here can cause a deadlock
                     key_to_delete = Some(key.clone());
                     key_delete_msg = Some("END".to_owned());
@@ -86,11 +82,7 @@ pub fn execute(ins: Instruction, cache: Db, lock_manager: LockManager) -> Result
             match cache.get(&key) {
                 Some(val) => {
                     let db_item = val.value();
-                    let current_time = SystemTime::now()
-                        .duration_since(UNIX_EPOCH)
-                        .context("TIME ERROR")?
-                        .as_millis();
-                    if current_time > db_item.expiry_timestamp && db_item.expiry_timestamp != 0 {
+                    if is_expired(&db_item) {
                         // Removing the key directly here can cause a deadlock
                         key_to_delete = Some(key.clone());
                         key_delete_msg = Some("NOT_STORED".to_owned());
@@ -117,8 +109,8 @@ pub fn execute(ins: Instruction, cache: Db, lock_manager: LockManager) -> Result
         }
         Instruction::Prepend {
             key,
-            expiry,
-            data_size,
+            expiry: _,
+            data_size: _,
             data,
         } => {
             if !lock_manager.contains_key(&key) {
@@ -129,11 +121,7 @@ pub fn execute(ins: Instruction, cache: Db, lock_manager: LockManager) -> Result
             match cache.get(&key) {
                 Some(val) => {
                     let db_item = val.value();
-                    let current_time = SystemTime::now()
-                        .duration_since(UNIX_EPOCH)
-                        .context("TIME ERROR")?
-                        .as_millis();
-                    if current_time > db_item.expiry_timestamp && db_item.expiry_timestamp != 0 {
+                    if is_expired(&db_item) {
                         // Removing the key directly here can cause a deadlock
                         key_to_delete = Some(key.clone());
                         key_delete_msg = Some("NOT_STORED".to_owned());
@@ -158,6 +146,48 @@ pub fn execute(ins: Instruction, cache: Db, lock_manager: LockManager) -> Result
                 Err(anyhow!("NOT_STORED"))
             }
         }
+        Instruction::Add {
+            key,
+            expiry,
+            data_size: _,
+            data,
+        } => {
+            if cache.contains_key(&key) {
+                println!("contains key");
+                lock_manager.get(&key).unwrap().read();
+                // check if expired
+                let db_item = cache.get(&key).unwrap();
+                let db_item = db_item.value();
+                lock_manager.get(&key).unwrap().read();
+                if !is_expired(&db_item) {
+                    return Err(anyhow!("NOT_STORED"));
+                }
+            }
+
+            return insert_key(key, expiry, data, cache, lock_manager);
+        }
+        Instruction::Replace {
+            key,
+            expiry,
+            data_size: _,
+            data,
+        } => {
+            let mut insert_value = false;
+
+            if lock_manager.contains_key(&key) {
+                lock_manager.get(&key).unwrap().write();
+                let db_item = cache.get(&key).unwrap();
+                let db_item = db_item.value();
+                if !is_expired(db_item) {
+                    insert_value = true;
+                };
+            }
+            if insert_value {
+                return insert_key(key, expiry, data, cache.clone(), lock_manager);
+            } else {
+                return Err(anyhow!("NOT_STORED"));
+            }
+        }
     };
 
     if let Some(del) = key_to_delete.clone() {
@@ -170,4 +200,40 @@ pub fn execute(ins: Instruction, cache: Db, lock_manager: LockManager) -> Result
         anyhow::bail!(key_delete_msg.unwrap());
     }
     res
+}
+
+fn is_expired(db_item: &DBItem) -> bool {
+    let current_time = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .context("TIME ERROR")
+        .unwrap()
+        .as_millis();
+    current_time > db_item.expiry_timestamp && db_item.expiry_timestamp != 0
+}
+
+fn insert_key(
+    key: String,
+    expiry: u128,
+    data: Bytes,
+    cache: Db,
+    lock_manager: LockManager,
+) -> Result<String> {
+    let mut expiry_milis = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .context("SYSTEM_ERROR")?
+        .as_millis()
+        + expiry * 1000;
+    if expiry == 0 {
+        expiry_milis = 0;
+    }
+    cache.insert(
+        key.clone(),
+        DBItem {
+            expiry_secs: expiry,
+            expiry_timestamp: expiry_milis,
+            value: data,
+        },
+    );
+    lock_manager.insert(key, RwLock::new(true));
+    Ok("STORED".to_owned())
 }

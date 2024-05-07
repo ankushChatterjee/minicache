@@ -26,6 +26,18 @@ pub enum Instruction {
         data_size: usize,
         data: Bytes,
     },
+    Add {
+        key: String,
+        expiry: u128,
+        data_size: usize,
+        data: Bytes,
+    },
+    Replace {
+        key: String,
+        expiry: u128,
+        data_size: usize,
+        data: Bytes,
+    },
 }
 
 pub fn complete_ins(ins: Instruction, data: Bytes) -> Instruction {
@@ -63,6 +75,32 @@ pub fn complete_ins(ins: Instruction, data: Bytes) -> Instruction {
             data: _,
         } => {
             return Instruction::Prepend {
+                key,
+                expiry,
+                data_size,
+                data,
+            };
+        }
+        Instruction::Add {
+            key,
+            expiry,
+            data_size,
+            data: _,
+        } => {
+            return Instruction::Add {
+                key,
+                expiry,
+                data_size,
+                data,
+            };
+        }
+        Instruction::Replace {
+            key,
+            expiry,
+            data_size,
+            data: _,
+        } => {
+            return Instruction::Replace {
                 key,
                 expiry,
                 data_size,
@@ -177,6 +215,60 @@ pub fn parse_string(line: String) -> Result<Instruction> {
 
             let iw = anyhow!(ParseError::InsufficientWaiting(
                 Instruction::Prepend {
+                    key,
+                    expiry,
+                    data_size,
+                    data: Bytes::new(),
+                },
+                data_size
+            ));
+            return Err(iw);
+        }
+        Some("add") => {
+            let key = parts
+                .next()
+                .context(anyhow!(ParseError::InvalidInstruction))?
+                .to_string();
+            let expiry = parts
+                .next()
+                .context(anyhow!(ParseError::InvalidInstruction))?
+                .parse::<u128>()
+                .context(anyhow!(ParseError::InvalidInstruction))?;
+            let data_size = parts
+                .next()
+                .context(anyhow!(ParseError::InvalidInstruction))?
+                .parse::<usize>()
+                .context(anyhow!(ParseError::InvalidInstruction))?;
+
+            let iw = anyhow!(ParseError::InsufficientWaiting(
+                Instruction::Add {
+                    key,
+                    expiry,
+                    data_size,
+                    data: Bytes::new(),
+                },
+                data_size
+            ));
+            return Err(iw);
+        }
+        Some("replace") => {
+            let key = parts
+                .next()
+                .context(anyhow!(ParseError::InvalidInstruction))?
+                .to_string();
+            let expiry = parts
+                .next()
+                .context(anyhow!(ParseError::InvalidInstruction))?
+                .parse::<u128>()
+                .context(anyhow!(ParseError::InvalidInstruction))?;
+            let data_size = parts
+                .next()
+                .context(anyhow!(ParseError::InvalidInstruction))?
+                .parse::<usize>()
+                .context(anyhow!(ParseError::InvalidInstruction))?;
+
+            let iw = anyhow!(ParseError::InsufficientWaiting(
+                Instruction::Replace {
                     key,
                     expiry,
                     data_size,
